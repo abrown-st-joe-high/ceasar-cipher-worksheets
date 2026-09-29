@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caesar Cipher Worksheet Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#222}
+  h1{font-size:1.5rem}
+  label{display:block;font-weight:600;margin:1rem 0 .25rem}
+  textarea{width:100%;box-sizing:border-box;font:inherit;padding:.5rem}
+  input[type=number]{width:4rem;font:inherit;padding:.25rem}
+  button{font:inherit;font-weight:600;padding:.6rem 1.2rem;margin-top:1rem;cursor:pointer}
+  .hint{font-size:.85rem;color:#555}
+  #msg{color:#b00;margin-top:.5rem}
+</style>
+</head>
+<body>
+<h1>Caesar Cipher Worksheet Generator</h1>
+<p class="hint">One PDF, one unique page per student. Each page has a 0–25 letter chart, 1 shared problem, 1 problem with a different shift (1–7), and 2 "which shift?" problems with 4 options.</p>
+
+<label for="phrases">Phrases (one per line, at least 4)</label>
+<textarea id="phrases" rows="10">Practice makes perfect every single day
+Treat others the way you want
+Knowledge is power so keep learning
+Teamwork makes the dream work
+Do your best and never give up
+Always be kind to your classmates
+Mistakes help us learn and grow
+Read every day and lead the way
+Hard work today builds success tomorrow
+Listen first and then speak thoughtfully</textarea>
+
+<label for="names">Student names (one per line)</label>
+<textarea id="names" rows="6">Student One
+Student Two
+Student Three</textarea>
+
+<label for="shared">Shared shift for problem 1 (same for everyone, 1–25)</label>
+<input type="number" id="shared" min="1" max="25" value="3">
+
+<label><input type="checkbox" id="key" checked> Add answer key pages at the end</label>
+
+<button id="go">Generate PDF</button>
+<div id="msg"></div>
+
+<script>
+const A = 26;
+const rnd = n => Math.floor(Math.random() * n);
+const lines = id => document.getElementById(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+function shuffle(a){ a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=rnd(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function encode(text, s){
+  return text.toUpperCase().replace(/[A-Z]/g, c => String.fromCharCode(65 + (c.charCodeAt(0)-65+s)%A));
+}
+function options(correct){
+  const set = new Set([correct]);
+  while (set.size < 4) set.add(1 + rnd(25));
+  return shuffle([...set]);
+}
+
+function buildStudent(name, phrases, shared, sharedShift){
+  const pool = shuffle(phrases.filter(p => p !== shared)).slice(0,3);
+  let s2; do { s2 = 1 + rnd(7); } while (s2 === sharedShift);
+  const probs = [
+    {type:"shared", plain:shared, shift:sharedShift},
+    {type:"given", plain:pool[0], shift:s2},
+    {type:"choice", plain:pool[1], shift:1+rnd(25)},
+    {type:"choice", plain:pool[2], shift:1+rnd(25)}
+  ];
+  probs.forEach(p => { p.cipher = encode(p.plain, p.shift); if (p.type==="choice") p.opts = options(p.shift); });
+  return {name, probs};
+}
+
+function drawPage(doc, st){
+  const M = 0.6, W = 8.5 - 2*M;
+  doc.setFont("helvetica","bold"); doc.setFontSize(20);
+  doc.text("Caesar Cipher Practice", M, 0.8);
+  doc.setFontSize(12); doc.setFont("helvetica","normal");
+  doc.text("Name: " + st.name, M, 1.15);
+  doc.text("Date: ____________", 8.5-M-1.8, 1.15);
+
+  // 0-25 chart
+  const bw = W/26, y0 = 1.4;
+  doc.setFont("courier","bold"); doc.setFontSize(11);
+  for (let i=0;i<26;i++){
+    const x = M + i*bw;
+    doc.rect(x, y0, bw, 0.3); doc.rect(x, y0+0.3, bw, 0.3);
+    doc.text(String.fromCharCode(65+i), x+bw/2, y0+0.21, {align:"center"});
+    doc.text(String(i), x+bw/2, y0+0.51, {align:"center"});
+  }
+  doc.setFont("helvetica","normal"); doc.setFontSize(10);
+  const inst = doc.splitTextToSize("To decode: turn each letter into its number, SUBTRACT the shift, then turn the new number back into a letter. If you go below 0, wrap around to 25 (so 0 \u2212 3 = 23). Leave spaces and punctuation alone.", W);
+  doc.text(inst, M, y0+0.85);
+
+  let y = 2.75; const H = 1.85;
+  st.probs.forEach((p,i) => {
+    doc.setFont("helvetica","bold"); doc.setFontSize(12);
+    let head = (i+1) + ".  ";
+    if (p.type==="choice") head += "Which shift was used? Options: { " + p.opts.join(", ") + " }";
+    else head += "Shift: " + p.shift;
+    doc.text(head, M, y);
+    doc.setFont("courier","bold"); doc.setFontSize(13);
+    doc.text(doc.splitTextToSize(p.cipher, W-0.2), M+0.2, y+0.35);
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+    if (p.type==="choice"){
+      doc.text("Shift used: ______", M, y+0.75);
+      doc.text("Decoded:", M, y+1.15);
+      doc.line(M+0.7, y+1.15, M+W, y+1.15);
+    } else {
+      doc.text("Decoded:", M, y+0.85);
+      doc.line(M+0.7, y+0.85, M+W, y+0.85);
+      doc.line(M, y+1.3, M+W, y+1.3);
+    }
+    y += H;
+  });
+}
+
+function drawKey(doc, students){
+  const M = 0.6; let y = 0.8;
+  const title = () => { doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.text("Answer Key", M, y); y += 0.4; };
+  title();
+  doc.setFontSize(9);
+  students.forEach(st => {
+    if (y > 8.6){ doc.addPage(); y = 0.8; title(); }
+    doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text(st.name, M, y); y += 0.2;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    st.probs.forEach((p,i) => {
+      const extra = p.type==="choice" ? " (shift " + p.shift + ")" : "";
+      doc.text((i+1) + ". " + p.plain + extra, M+0.2, y); y += 0.18;
+    });
+    y += 0.15;
+  });
+}
+
+document.getElementById("go").onclick = () => {
+  const msg = document.getElementById("msg"); msg.textContent = "";
+  const phrases = lines("phrases"), names = lines("names");
+  const sharedShift = parseInt(document.getElementById("shared").value, 10);
+  if (phrases.length < 4) return msg.textContent = "Please enter at least 4 phrases.";
+  if (!names.length) return msg.textContent = "Please enter at least one student name.";
+  if (!(sharedShift >= 1 && sharedShift <= 25)) return msg.textContent = "Shared shift must be 1–25.";
+  if (!window.jspdf) return msg.textContent = "PDF library failed to load. Check your connection.";
+
+  const shared = phrases[rnd(phrases.length)];
+  const students = names.map(n => buildStudent(n, phrases, shared, sharedShift));
+  const doc = new window.jspdf.jsPDF({unit:"in", format:"letter"});
+  students.forEach((st,i) => { if (i) doc.addPage(); drawPage(doc, st); });
+  if (document.getElementById("key").checked){ doc.addPage(); drawKey(doc, students); }
+  doc.save("caesar-cipher-worksheets.pdf");
+};
+</script>
+</body>
+</html>
